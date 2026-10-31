@@ -76,9 +76,6 @@ router.post('/verify-purchase', requireAuth, async (req, res) => {
     if (receipt.status !== 1) {
       return res.status(400).json({ error: 'Transaction failed on-chain' });
     }
-    if (!sameAddress(receipt.to, CONTRACT_ADDRESS)) {
-      return res.status(400).json({ error: 'Transaction was not sent to the ticket contract' });
-    }
 
     // 4. Find the TicketPurchased event emitted by our contract
     let purchased = null;
