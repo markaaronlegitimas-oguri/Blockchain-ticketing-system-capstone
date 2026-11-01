@@ -83,30 +83,6 @@ app.post('/api/events/:eventId/issue-tickets', requireAuth, requireRole('organiz
   }
 });
 
-// 1. Generate a scannable QR code image for a ticket (by qr_code payload)
-const QRCode = require('qrcode'); // npm install qrcode first
-
-app.get('/api/tickets/:ticketId/qr-image', async (req, res) => {
-  try {
-    const { ticketId } = req.params;
-
-    const { data: ticket, error } = await supabase
-      .from('tickets')
-      .select('qr_code, status')
-      .eq('id', ticketId)
-      .single();
-
-    if (error || !ticket) {
-      return res.status(404).json({ error: 'Ticket not found' });
-    }
-
-    const qrImageDataUrl = await QRCode.toDataURL(ticket.qr_code);
-    res.json({ qrImage: qrImageDataUrl, status: ticket.status });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
 // 2. Check-in endpoint - staff/admin only, marks a ticket 'used'
 app.post('/api/tickets/check-in', requireAuth, requireRole('staff', 'admin'), async (req, res) => {
   const { qrCode } = req.body;

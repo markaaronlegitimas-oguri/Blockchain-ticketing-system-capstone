@@ -62,10 +62,6 @@ router.post('/login', async (req, res) => {
       .eq('id', data.user.id)
       .single();
 
-    console.log('DEBUG login - user id:', data.user.id);
-    console.log('DEBUG login - profile:', profile);
-    console.log('DEBUG login - profileError:', profileError);
-
     return res.json({
       user: profile,
       access_token: data.session.access_token, // send this as "Bearer <token>" on future requests
