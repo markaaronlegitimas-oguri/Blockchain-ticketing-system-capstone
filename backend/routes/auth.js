@@ -4,6 +4,14 @@
 
 const express = require('express');
 const supabase = require('../supabaseClient'); // SERVICE ROLE key client
+const { createClient } = require('@supabase/supabase-js');
+
+// Fresh client per sign-in/sign-up so a user's session never sticks to the shared service client
+function authClient() {
+  return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
+}
 const { requireAuth, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
@@ -23,7 +31,7 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'Password must be at least 8 characters.' });
     }
 
-    const { data, error } = await supabase.auth.signUp({
+    const { data, error } = await authClient().auth.signUp({
       email,
       password,
       options: { data: { full_name } }, // lands in raw_user_meta_data, read by the trigger
@@ -52,7 +60,7 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ error: 'email and password are required.' });
     }
 
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await authClient().auth.signInWithPassword({ email, password });
 
     if (error) return res.status(401).json({ error: 'Invalid email or password.' });
 
