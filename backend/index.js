@@ -41,12 +41,6 @@ app.get('/api/contract-info', async (req, res) => {
   }
 });
 
-app.get('/api/test-supabase', async (req, res) => {
-  const { data, error } = await supabase.from('events').select('*').limit(5);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ message: 'Supabase connected!', events: data });
-});
-
 // Organizer/admin only: issue tickets on-chain for an event
 app.post('/api/events/:eventId/issue-tickets', requireAuth, requireRole('organizer', 'admin'), async (req, res) => {
   const { eventId } = req.params;
