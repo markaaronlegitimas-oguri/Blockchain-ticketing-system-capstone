@@ -1,11 +1,17 @@
 import { purchaseTicketOnChain } from './purchaseTicket';
 import { TicketStatus } from './ticketTypes';
 
-const ticket = (id: number, status: TicketStatus) => ({ id: { toString: () => String(id) }, status });
+const ticket = (id: number, status: TicketStatus, tier = 0) => ({
+  id: { toString: () => String(id) },
+  status,
+  tier,
+});
+
+const PRICES = ['10000000000000000', '20000000000000000', '30000000000000000'];
 
 function fakeContract(overrides: Record<string, unknown> = {}) {
   return {
-    ticketPrice: vi.fn().mockResolvedValue('10000000000000000'),
+    getTierPrices: vi.fn().mockResolvedValue(PRICES),
     getAllTickets: vi.fn().mockResolvedValue([ticket(0, TicketStatus.Sold), ticket(1, TicketStatus.Unsold)]),
     getTicket: vi.fn().mockResolvedValue({ status: TicketStatus.Sold }),
     purchaseTicket: vi.fn().mockResolvedValue({ hash: '0xabc', wait: vi.fn().mockResolvedValue({}) }),
@@ -14,16 +20,33 @@ function fakeContract(overrides: Record<string, unknown> = {}) {
 }
 
 describe('purchaseTicketOnChain', () => {
-  it('buys the first unsold ticket and pays the on-chain price', async () => {
+  it('buys the first unsold General ticket and pays the General price', async () => {
     const contract = fakeContract();
-    const result = await purchaseTicketOnChain(contract);
+    const result = await purchaseTicketOnChain(contract, 0);
     expect(result).toEqual({ txHash: '0xabc', ticketId: 1 });
-    expect(contract.purchaseTicket).toHaveBeenCalledWith(1, { value: '10000000000000000' });
+    expect(contract.purchaseTicket).toHaveBeenCalledWith(1, { value: PRICES[0] });
+  });
+
+  it('buys a VIP ticket at the VIP price', async () => {
+    const contract = fakeContract({
+      getAllTickets: vi.fn().mockResolvedValue([ticket(0, TicketStatus.Unsold, 0), ticket(5, TicketStatus.Unsold, 2)]),
+    });
+    const result = await purchaseTicketOnChain(contract, 2);
+    expect(result).toEqual({ txHash: '0xabc', ticketId: 5 });
+    expect(contract.purchaseTicket).toHaveBeenCalledWith(5, { value: PRICES[2] });
+  });
+
+  it('ignores unsold tickets of other tiers', async () => {
+    const contract = fakeContract({
+      getAllTickets: vi.fn().mockResolvedValue([ticket(0, TicketStatus.Unsold, 0)]),
+    });
+    await expect(purchaseTicketOnChain(contract, 2)).rejects.toThrow(/sold out/i);
+    expect(contract.purchaseTicket).not.toHaveBeenCalled();
   });
 
   it('fails clearly when everything is sold out', async () => {
     const contract = fakeContract({ getAllTickets: vi.fn().mockResolvedValue([ticket(0, TicketStatus.Sold)]) });
-    await expect(purchaseTicketOnChain(contract)).rejects.toThrow(/sold out/i);
+    await expect(purchaseTicketOnChain(contract, 0)).rejects.toThrow(/sold out/i);
     expect(contract.purchaseTicket).not.toHaveBeenCalled();
   });
 
@@ -32,7 +55,7 @@ describe('purchaseTicketOnChain', () => {
       getAllTickets: vi.fn().mockResolvedValue([ticket(1, TicketStatus.Unsold), ticket(2, TicketStatus.Unsold)]),
       purchaseTicket: vi.fn().mockRejectedValue({ code: 4001 }),
     });
-    await expect(purchaseTicketOnChain(contract)).rejects.toEqual({ code: 4001 });
+    await expect(purchaseTicketOnChain(contract, 0)).rejects.toEqual({ code: 4001 });
     expect(contract.purchaseTicket).toHaveBeenCalledTimes(1);
   });
 
@@ -46,7 +69,7 @@ describe('purchaseTicketOnChain', () => {
       purchaseTicket: purchase,
       getTicket: vi.fn().mockResolvedValue({ status: TicketStatus.Sold }),
     });
-    const result = await purchaseTicketOnChain(contract);
+    const result = await purchaseTicketOnChain(contract, 0);
     expect(result).toEqual({ txHash: '0xdef', ticketId: 2 });
   });
 });

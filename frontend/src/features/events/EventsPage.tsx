@@ -12,22 +12,22 @@ const EventsPage: React.FC = () => {
   const { events, loading, error, reload } = useEvents();
   const { buy, buyingTierId, notice, clearNotice } = usePurchase(() => reload(true));
   const { contract, isConnected } = useWallet();
-  const [onchainPrice, setOnchainPrice] = useState<string | null>(null);
+  const [onchainPrices, setOnchainPrices] = useState<string[] | null>(null);
 
-  // The contract decides what a ticket really costs.
+  // The contract decides what each tier really costs.
   useEffect(() => {
     if (!contract) {
-      setOnchainPrice(null);
+      setOnchainPrices(null);
       return;
     }
     let cancelled = false;
     contract
-      .ticketPrice()
-      .then((wei: ethers.BigNumber) => {
-        if (!cancelled) setOnchainPrice(ethers.utils.formatEther(wei));
+      .getTierPrices()
+      .then((wei: ethers.BigNumber[]) => {
+        if (!cancelled) setOnchainPrices(wei.map((w) => ethers.utils.formatEther(w)));
       })
       .catch(() => {
-        if (!cancelled) setOnchainPrice(null);
+        if (!cancelled) setOnchainPrices(null);
       });
     return () => {
       cancelled = true;
@@ -43,7 +43,13 @@ const EventsPage: React.FC = () => {
             Every ticket is issued on the blockchain and checked at the gate with a one-time QR code.
           </Typography>
         </Box>
-        {onchainPrice && <Chip color="secondary" variant="outlined" label={`On-chain price ${formatEth(onchainPrice)} + gas`} />}
+       {onchainPrices && (
+          <Chip
+            color="secondary"
+            variant="outlined"
+            label={`On-chain: General ${formatEth(onchainPrices[0])} · Premium ${formatEth(onchainPrices[1])} · VIP ${formatEth(onchainPrices[2])} + gas`}
+          />
+        )}
       </Box>
 
       {!isConnected && <ConnectPrompt />}

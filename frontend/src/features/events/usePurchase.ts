@@ -37,9 +37,8 @@ export function usePurchase(onPurchased: () => void) {
       let txHash: string | null = null;
       setBuyingTierId(tierId);
       try {
-        const { booking } = await apiRequest(`/slots/${tierId}/book`, { method: 'POST', token: accessToken });
-
-        const paid = await purchaseTicketOnChain(contract);
+        const { booking, tier } = await apiRequest(`/slots/${tierId}/book`, { method: 'POST', token: accessToken });
+        const paid = await purchaseTicketOnChain(contract, Number(tier)); 
         txHash = paid.txHash;
 
         const { ticket } = await apiRequest('/tickets/verify-purchase', {

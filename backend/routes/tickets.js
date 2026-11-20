@@ -56,7 +56,7 @@ router.post('/verify-purchase', requireAuth, async (req, res) => {
 
     const { data: slot, error: slotError } = await supabase
       .from('slots')
-      .select('id, session_id')
+      .select('id, session_id, tier')
       .eq('id', booking.slot_id)
       .single();
     if (slotError || !slot) throw slotError || new Error('Slot not found');
@@ -97,6 +97,15 @@ router.post('/verify-purchase', requireAuth, async (req, res) => {
 
     const onchainTicketId = Number(purchased.args.ticketId);
     const buyer = purchased.args.buyer;
+        // Read the tier and seat of the purchased ticket from the contract
+    const chainTicket = await new ethers.Contract(CONTRACT_ADDRESS, contractArtifact.abi, provider)
+      .getTicket(onchainTicketId);
+    const ticketTier = Number(chainTicket.tier);
+    const ticketSeat = Number(chainTicket.seat);
+    if (slot.tier !== null && slot.tier !== undefined && ticketTier !== slot.tier) {
+      return res.status(400).json({ error: 'The purchased ticket does not match the reserved tier' });
+    }
+    const seatLabel = `${['GEN', 'PRE', 'VIP'][ticketTier]}-${String(ticketSeat).padStart(2, '0')}`;
 
     // 5. The buyer must be this user's linked wallet (case-insensitive)
     if (!sameAddress(buyer, userRow.wallet_address)) {
@@ -137,6 +146,10 @@ router.post('/verify-purchase', requireAuth, async (req, res) => {
         owner_id: userId,
         status: 'sold',
         qr_code: qrCode,
+        purchase_tx: txHash,
+        tier: ticketTier,
+        seat: ticketSeat,
+        seat_label: seatLabel,
       })
       .select()
       .single();

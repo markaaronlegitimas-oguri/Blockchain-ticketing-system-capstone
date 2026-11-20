@@ -44,10 +44,10 @@ app.get('/api/contract-info', async (req, res) => {
 // Organizer/admin only: issue tickets on-chain for an event
 app.post('/api/events/:eventId/issue-tickets', requireAuth, requireRole('organizer', 'admin'), async (req, res) => {
   const { eventId } = req.params;
-  const { count } = req.body;
+  const { count, tier } = req.body;
 
-  if (!count) {
-    return res.status(400).json({ error: 'count is required' });
+  if (!count || ![0, 1, 2].includes(Number(tier))) {
+    return res.status(400).json({ error: 'count and tier (0, 1 or 2) are required' });
   }
 
   try {
@@ -63,7 +63,7 @@ app.post('/api/events/:eventId/issue-tickets', requireAuth, requireRole('organiz
     }
 
     // Call the smart contract to issue tickets on-chain
-    const tx = await contract.issueTickets(count);
+    const tx = await contract.issueTickets(Number(tier), count);
     const receipt = await tx.wait();
 
     res.json({
@@ -94,6 +94,12 @@ app.post('/api/tickets/check-in', requireAuth, requireRole('staff', 'admin'), as
 
     if (findError || !ticket) {
       return res.status(404).json({ error: 'Ticket not found' });
+          // Block entry if the event was cancelled
+    const { data: evRow } = await supabase
+      .from('events').select('cancelled_at').eq('id', ticket.event_id).maybeSingle();
+    if (evRow?.cancelled_at) {
+      return res.status(409).json({ error: 'This event was cancelled. Entry is not allowed.' });
+    }
     }
 
     if (ticket.status === 'used') {

@@ -6,7 +6,11 @@
 const express = require('express');
 const supabase = require('../supabaseClient');
 const { requireAuth } = require('../middleware/auth');
-
+const { ethers } = require('ethers');
+const contractArtifact = require('../EventTicket.json');
+const provider = new ethers.JsonRpcProvider(process.env.SEPOLIA_RPC_URL);
+const chain = new ethers.Contract(process.env.CONTRACT_ADDRESS, contractArtifact.abi, provider);
+const STATUS_NAMES = ['available', 'sold', 'used', 'cancelled', 'refunded'];
 const router = express.Router();
 
 // GET /api/events/:eventId/sessions
@@ -33,7 +37,7 @@ router.get('/sessions/:sessionId/slots', async (req, res) => {
   try {
     const { data: slots, error } = await supabase
       .from('slots')
-      .select('id, slot_name, price, capacity')
+      .select('id, slot_name, price, capacity, tier')
       .eq('session_id', req.params.sessionId);
 
     if (error) throw error;
@@ -86,9 +90,13 @@ router.post('/slots/:slotId/book', requireAuth, async (req, res) => {
 
     if (error) throw error;
 
+    const { data: slotRow } = await supabase
+      .from('slots').select('tier').eq('id', slotId).single();
+
     res.status(201).json({
       message: 'Slot reserved. Complete your purchase within 10 minutes.',
       booking,
+      tier: slotRow?.tier ?? 0,
     });
   } catch (error) {
     console.error('[POST /book]', error.message);
@@ -143,5 +151,51 @@ router.post('/bookings/:bookingId/confirm', requireAuth, async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+// GET /api/sessions/:sessionId/seat-map
+// Seat map for every logged-in role (attendee, staff, organizer, admin).
+router.get('/sessions/:sessionId/seat-map', requireAuth, async (req, res) => {
+  try {
+    const { data: slots, error } = await supabase
+      .from('slots')
+      .select('id, slot_name, price, capacity, tier')
+      .eq('session_id', req.params.sessionId)
+      .order('tier', { ascending: true });
+    if (error) throw error;
+
+    const all = await chain.getAllTickets();
+    const tiers = [];
+    for (const slot of slots) {
+      const seats = all
+        .filter((t) => Number(t.tier) === slot.tier)
+        .map((t) => ({
+          seat: Number(t.seat),
+          ticketId: Number(t.id),
+          status: STATUS_NAMES[Number(t.status)],
+        }))
+        .sort((a, b) => a.seat - b.seat);
+
+      // seats currently being paid for (10-minute holds) are shown as reserved
+      const { count } = await supabase
+        .from('bookings')
+        .select('id', { count: 'exact', head: true })
+        .eq('slot_id', slot.id)
+        .eq('status', 'pending')
+        .gt('expires_at', new Date().toISOString());
+      let toReserve = count || 0;
+      for (const s of seats) {
+        if (toReserve > 0 && s.status === 'available') { s.status = 'reserved'; toReserve--; }
+      }
+
+      tiers.push({ slotId: slot.id, name: slot.slot_name, tier: slot.tier,
+                   price: slot.price, capacity: slot.capacity, seats });
+    }
+    res.json({ tiers });
+  } catch (error) {
+    console.error('[GET /seat-map]', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 
 module.exports = router;
