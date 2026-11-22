@@ -4,7 +4,7 @@
 const express = require('express');
 const { ethers } = require('ethers'); // backend uses ethers v6
 const supabase = require('../supabaseClient');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireRole } = require('../middleware/auth');
 const contractArtifact = require('../EventTicket.json');
 const { notify } = require('../notify');
 
@@ -319,6 +319,141 @@ router.get('/my-tickets/:onchainTicketId/qr', requireAuth, async (req, res) => {
   } catch (error) {
     console.error('[GET /my-tickets/:id/qr]', error.message);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/tickets/sync-refund   body: { txHash }
+// Mirrors an on-chain ticket refund (claimEventRefund or cancelTicket) in the database.
+router.post('/sync-refund', requireAuth, async (req, res) => {
+  try {
+    const { txHash } = req.body || {};
+    if (!/^0x[0-9a-fA-F]{64}$/.test(txHash || '')) {
+      return res.status(400).json({ error: 'A valid txHash is required' });
+    }
+    const receipt = await provider.getTransactionReceipt(txHash);
+    if (!receipt) {
+      return res.status(404).json({ error: 'Transaction not found yet, retry in a few seconds' });
+    }
+    if (receipt.status !== 1) {
+      return res.status(400).json({ error: 'Transaction failed on-chain' });
+    }
+
+    let parsed = null;
+    for (const log of receipt.logs) {
+      if (!sameAddress(log.address, CONTRACT_ADDRESS)) continue;
+      try {
+        const p = iface.parseLog({ topics: [...log.topics], data: log.data });
+        if (p && p.name === 'TicketCancelled') { parsed = p; break; }
+      } catch (_) {}
+    }
+    if (!parsed) {
+      return res.status(400).json({ error: 'No refund event in this transaction' });
+    }
+    const onchainTicketId = Number(parsed.args[0]);
+    const ownerWallet = parsed.args[1];
+    const refundAmount = parsed.args[2];
+
+    // The caller must be the wallet that received the refund
+    const { data: me } = await supabase
+      .from('users').select('wallet_address').eq('id', req.user.id).single();
+    if (!sameAddress(me?.wallet_address, ownerWallet)) {
+      return res.status(403).json({ error: 'This refund was not paid to your linked wallet' });
+    }
+
+    // Final status comes from the contract (3 = Cancelled, 4 = Refunded)
+    const chain = new ethers.Contract(CONTRACT_ADDRESS, contractArtifact.abi, provider);
+    const onchain = await chain.getTicket(onchainTicketId);
+    const code = Number(onchain.status);
+    const dbStatus = code === 4 ? 'refunded' : code === 3 ? 'cancelled' : null;
+    if (!dbStatus) {
+      return res.status(400).json({ error: 'Ticket is not refunded on-chain' });
+    }
+
+    const { data: ev } = await supabase
+      .from('events').select('id')
+      .ilike('contract_address', CONTRACT_ADDRESS).maybeSingle();
+    if (!ev) return res.status(500).json({ error: 'events.contract_address is not set' });
+
+    const { data: ticket } = await supabase
+      .from('tickets').select('id, owner_id, status')
+      .eq('event_id', ev.id).eq('onchain_ticket_id', onchainTicketId).maybeSingle();
+    if (!ticket) return res.status(404).json({ error: 'Ticket not found in database' });
+    if (ticket.owner_id !== req.user.id) {
+      return res.status(403).json({ error: 'This ticket does not belong to you' });
+    }
+    if (ticket.status === dbStatus) {
+      return res.json({ synced: true, note: 'Already up to date' });
+    }
+
+    const { error: updErr } = await supabase
+      .from('tickets').update({ status: dbStatus }).eq('id', ticket.id);
+    if (updErr) throw updErr;
+
+    notify(req.user.id, {
+      type: 'refund',
+      title: dbStatus === 'refunded' ? 'Refund received' : 'Ticket cancelled',
+      message: `Ticket #${onchainTicketId} was ${dbStatus}. ${ethers.formatEther(refundAmount)} ETH was returned to your wallet.`,
+    });
+
+    res.json({ synced: true, status: dbStatus });
+  } catch (err) {
+    console.error('[POST /sync-refund]', err.message);
+    res.status(500).json({ error: 'Failed to sync refund' });
+  }
+});
+
+// POST /api/tickets/sync-event-cancel   body: { txHash }   (organizer or admin)
+// Marks the event as cancelled after the on-chain cancelEvent() and notifies ticket holders.
+router.post('/sync-event-cancel', requireAuth, requireRole('organizer', 'admin'), async (req, res) => {
+  try {
+    const { txHash } = req.body || {};
+    if (!/^0x[0-9a-fA-F]{64}$/.test(txHash || '')) {
+      return res.status(400).json({ error: 'A valid txHash is required' });
+    }
+    const receipt = await provider.getTransactionReceipt(txHash);
+    if (!receipt) {
+      return res.status(404).json({ error: 'Transaction not found yet, retry in a few seconds' });
+    }
+    if (receipt.status !== 1) {
+      return res.status(400).json({ error: 'Transaction failed on-chain' });
+    }
+
+    let found = false;
+    for (const log of receipt.logs) {
+      if (!sameAddress(log.address, CONTRACT_ADDRESS)) continue;
+      try {
+        const p = iface.parseLog({ topics: [...log.topics], data: log.data });
+        if (p && p.name === 'EventCancelledAndRefunded') { found = true; break; }
+      } catch (_) {}
+    }
+    if (!found) {
+      return res.status(400).json({ error: 'No event cancellation in this transaction' });
+    }
+
+    const { data: ev } = await supabase
+      .from('events').select('id, name, cancelled_at')
+      .ilike('contract_address', CONTRACT_ADDRESS).maybeSingle();
+    if (!ev) return res.status(500).json({ error: 'events.contract_address is not set' });
+    if (ev.cancelled_at) return res.json({ synced: true, note: 'Already marked as cancelled' });
+
+    const { error: updErr } = await supabase
+      .from('events').update({ cancelled_at: new Date().toISOString() }).eq('id', ev.id);
+    if (updErr) throw updErr;
+
+    const { data: holders } = await supabase
+      .from('tickets').select('owner_id, onchain_ticket_id')
+      .eq('event_id', ev.id).eq('status', 'sold');
+    for (const h of holders || []) {
+      notify(h.owner_id, {
+        type: 'event_cancelled',
+        title: 'Event cancelled',
+        message: `${ev.name} was cancelled. Open My Tickets and claim your refund for ticket #${h.onchain_ticket_id}.`,
+      });
+    }
+    res.json({ synced: true, notified: (holders || []).length });
+  } catch (err) {
+    console.error('[POST /sync-event-cancel]', err.message);
+    res.status(500).json({ error: 'Failed to sync event cancellation' });
   }
 });
 

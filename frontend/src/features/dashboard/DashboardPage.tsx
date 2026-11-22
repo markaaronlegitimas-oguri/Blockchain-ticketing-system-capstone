@@ -3,6 +3,8 @@ import { Alert, Box, Button, Chip, LinearProgress, Paper, Skeleton, Typography }
 import DownloadIcon from '@mui/icons-material/Download';
 import { useAuth } from '../auth/AuthContext';
 import AnnouncementButton from './AnnouncementButton';
+import EventControls from './EventControls';
+import SeatMap from '../seats/SeatMap';
 
 import { API_BASE as API } from '../../lib/env';
 const REFRESH_MS = 2000; // near real-time: refresh every 2 seconds
@@ -186,6 +188,8 @@ const DashboardPage: React.FC = () => {
         </Alert>
       )}
 
+      <EventControls />
+
       {!data ? (
         <Skeleton variant="rectangular" height={120} sx={{ borderRadius: 2 }} />
       ) : (
@@ -242,6 +246,12 @@ const DashboardPage: React.FC = () => {
                       </Box>
                     );
                   })}
+                  <Box sx={{ mt: 2 }}>
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                      Seat map
+                    </Typography>
+                    <SeatMap sessionId={s.id} autoRefreshMs={10000} />
+                  </Box>
                 </Box>
               ))}
             </Paper>

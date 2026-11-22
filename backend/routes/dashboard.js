@@ -18,8 +18,8 @@ router.get(
       const [events, sessions, slots, tickets, bookings] = await Promise.all([
         supabase.from('events').select('id, name, ticket_price, max_tickets'),
         supabase.from('sessions').select('id, event_id, session_name, starts_at'),
-        supabase.from('slots').select('id, session_id, slot_name, price, capacity'),
-        supabase.from('tickets').select('id, event_id, status'),
+        supabase.from('slots').select('id, session_id, slot_name, price, capacity, tier'),
+        supabase.from('tickets').select('id, event_id, session_id, tier, status'),
         supabase.from('bookings').select('id, slot_id, status, expires_at'),
       ]);
 
@@ -41,11 +41,30 @@ router.get(
         }
       }
 
+      // Price of each tier, by session and tier number (General / Premium / VIP)
+      const tierPrice = {};
+      for (const sl of slots.data) {
+        if (sl.tier !== null && sl.tier !== undefined) {
+          tierPrice[`${sl.session_id}:${sl.tier}`] = Number(sl.price) || 0;
+        }
+      }
+
       const eventSummaries = events.data.map((ev) => {
         const evTickets = tickets.data.filter((t) => t.event_id === ev.id);
         const sold = evTickets.filter(isSold).length;
         const checkedIn = evTickets.filter((t) => t.status === 'used').length;
-        const price = Number(ev.ticket_price) || 0;
+        const fallbackPrice = Number(ev.ticket_price) || 0;
+
+        // Revenue follows the real tier prices; cancelled and refunded tickets are not counted
+        const revenueEth = Number(
+          evTickets
+            .filter(isSold)
+            .reduce((sum, t) => {
+              const p = tierPrice[`${t.session_id}:${t.tier}`];
+              return sum + (p !== undefined ? p : fallbackPrice);
+            }, 0)
+            .toFixed(6)
+        );
 
         const evSessions = sessions.data
           .filter((s) => s.event_id === ev.id)
@@ -73,11 +92,11 @@ router.get(
         return {
           id: ev.id,
           name: ev.name,
-          ticketPriceEth: price,
+          ticketPriceEth: fallbackPrice,
           maxTickets: ev.max_tickets,
           sold,
           checkedIn,
-          revenueEth: Number((sold * price).toFixed(6)),
+          revenueEth,
           sessions: evSessions,
         };
       });

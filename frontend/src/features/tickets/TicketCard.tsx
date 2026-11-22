@@ -44,6 +44,7 @@ const TicketCard: React.FC<TicketCardProps> = ({ ticket, onTransfer }) => {
 
         {active && (
           <Box sx={{ display: 'flex', gap: 1, mt: 1, flexWrap: 'wrap' }}>
+            import RefundButton from './RefundButton';
             <Button variant="contained" startIcon={<QrCode2Icon />} onClick={() => setQrOpen(true)}>
               Show QR
             </Button>

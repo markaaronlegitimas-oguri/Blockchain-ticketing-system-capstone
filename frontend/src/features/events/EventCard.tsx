@@ -2,6 +2,7 @@ import React from 'react';
 import { Box, Button, Card, Chip, Divider, LinearProgress, Typography } from '@mui/material';
 import { EventItem, Tier } from './types';
 import { formatDateTime, formatEth } from '../../lib/format';
+import SeatMap from '../seats/SeatMap';
 
 interface EventCardProps {
   event: EventItem;
@@ -92,6 +93,12 @@ const EventCard: React.FC<EventCardProps> = ({ event, buyingTierId, onBuy }) => 
               onBuy={() => onBuy(tier.id)}
             />
           ))}
+          <Box sx={{ pb: 2 }}>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+              Seat map
+            </Typography>
+            <SeatMap sessionId={session.id} autoRefreshMs={15000} />
+          </Box>
         </Box>
       ))}
     </Box>
