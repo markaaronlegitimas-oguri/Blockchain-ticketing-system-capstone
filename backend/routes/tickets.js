@@ -274,10 +274,12 @@ router.get('/my-tickets', requireAuth, async (req, res) => {
   const userId = req.user.id;
 
   try {
-    const { data, error } = await supabase
+        const { data, error } = await supabase
       .from('tickets')
       .select(`
         onchain_ticket_id,
+        seat_label,
+        tier,
         sessions ( session_name, starts_at, events ( name ) )
       `)
       .eq('owner_id', userId);
@@ -288,6 +290,8 @@ router.get('/my-tickets', requireAuth, async (req, res) => {
       onchainTicketId: row.onchain_ticket_id,
       eventName: row.sessions?.events?.name ?? null,
       sessionDate: row.sessions?.starts_at ?? null,
+      seatLabel: row.seat_label ?? null,
+      tier: row.tier ?? null,
     }));
 
     res.json({ tickets });

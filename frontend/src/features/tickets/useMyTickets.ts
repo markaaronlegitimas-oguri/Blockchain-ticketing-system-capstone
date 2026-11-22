@@ -9,6 +9,8 @@ interface TicketDetail {
   onchainTicketId: number;
   eventName: string | null;
   sessionDate: string | null;
+  seatLabel: string | null;
+  tier: string | null;
 }
 
 /**
@@ -47,6 +49,7 @@ export function useMyTickets() {
             if (detail) {
               ticket.eventName = detail.eventName ?? undefined;
               ticket.sessionDate = detail.sessionDate ? formatDateTime(detail.sessionDate) : undefined;
+              ticket.seatLabel = detail.seatLabel ?? undefined;
             }
           }
         } catch (e) {
