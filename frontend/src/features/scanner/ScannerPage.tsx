@@ -163,7 +163,7 @@ const ScannerPage: React.FC = () => {
       )}
 
       <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, mb: 3 }}>
-        <Box id={READER_ID} sx={{ width: '100%', display: cameraOn ? 'block' : 'none', mb: 2 }} />
+                <Box id={READER_ID} sx={{ width: '100%', mb: cameraOn ? 2 : 0 }} />
         {cameraError && (
           <Alert severity="error" sx={{ mb: 2 }}>
             {cameraError}
