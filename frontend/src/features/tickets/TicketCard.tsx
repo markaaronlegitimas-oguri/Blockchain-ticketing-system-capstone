@@ -4,6 +4,7 @@ import QrCode2Icon from '@mui/icons-material/QrCode2';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import { Ticket, TicketStatus } from '../../lib/chain/ticketTypes';
 import TicketQrDialog from './TicketQrDialog';
+import RefundButton from './RefundButton';
 
 interface TicketCardProps {
   ticket: Ticket;
@@ -44,13 +45,13 @@ const TicketCard: React.FC<TicketCardProps> = ({ ticket, onTransfer }) => {
 
         {active && (
           <Box sx={{ display: 'flex', gap: 1, mt: 1, flexWrap: 'wrap' }}>
-            import RefundButton from './RefundButton';
             <Button variant="contained" startIcon={<QrCode2Icon />} onClick={() => setQrOpen(true)}>
               Show QR
             </Button>
             <Button variant="outlined" startIcon={<SwapHorizIcon />} onClick={() => onTransfer(ticket.id)}>
               Transfer
             </Button>
+            <RefundButton ticketId={ticket.id} status={ticket.status} />
           </Box>
         )}
       </Box>
