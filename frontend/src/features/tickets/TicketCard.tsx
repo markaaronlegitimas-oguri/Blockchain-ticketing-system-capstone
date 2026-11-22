@@ -32,7 +32,10 @@ const TicketCard: React.FC<TicketCardProps> = ({ ticket, onTransfer }) => {
           <Typography variant="h6" sx={{ lineHeight: 1.25 }}>
             {ticket.eventName ?? `Ticket #${ticket.id}`}
           </Typography>
-          <Chip size="small" color={status.color} label={status.label} />
+            <Box sx={{ display: 'flex', gap: 0.5, flexShrink: 0 }}>
+            {ticket.seatLabel && <Chip size="small" variant="outlined" label={`Seat ${ticket.seatLabel}`} />}
+            <Chip size="small" color={status.color} label={status.label} />
+          </Box>
         </Box>
         {ticket.sessionDate && (
           <Typography variant="body2" color="text.secondary">
