@@ -16,7 +16,7 @@ const EventControls: React.FC = () => {
   const canWithdraw = ended && !state.eventCancelled && !state.proceedsWithdrawn && Number(state.heldFunds) > 0;
 
   return (
-    <Card sx={{ p: 2.5, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+    <Card sx={{ p: 2.5, mb: 3, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
         <Typography variant="h6">Event controls</Typography>
         <Chip
