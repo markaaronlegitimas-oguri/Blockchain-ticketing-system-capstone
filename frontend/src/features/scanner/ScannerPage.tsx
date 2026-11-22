@@ -89,17 +89,33 @@ const ScannerPage: React.FC = () => {
     setCameraOn(false);
   }, []);
 
-  const startCamera = async () => {
+    const startCamera = async () => {
     setCameraError(null);
-    try {
+    const config = { fps: 10, qrbox: { width: 240, height: 240 } };
+
+    const tryStart = async (camera: { facingMode: string }) => {
       const scanner = new Html5Qrcode(READER_ID);
       scannerRef.current = scanner;
-      await scanner.start(
-        { facingMode: 'environment' },
-        { fps: 10, qrbox: { width: 240, height: 240 } },
-        handleDecoded,
-        undefined
-      );
+      try {
+        await scanner.start(camera, config, handleDecoded, undefined);
+      } catch (err) {
+        try {
+          scanner.clear();
+        } catch {
+          // nothing to clear
+        }
+        scannerRef.current = null;
+        throw err;
+      }
+    };
+
+    try {
+      try {
+        await tryStart({ facingMode: 'environment' });
+      } catch {
+        // no rear camera (laptop or Chromebook): use the front camera
+        await tryStart({ facingMode: 'user' });
+      }
       setCameraOn(true);
     } catch (e: any) {
       scannerRef.current = null;
